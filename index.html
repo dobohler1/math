@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SOTC Math v3 — Phase 1a</title>
+<script>
+// Dollar signs could appear as currency in word problems — only use \( \) as math delimiters.
+window.MathJax = { tex: { inlineMath: [["\\(", "\\)"]] }, svg: { fontCache: "global" } };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<style>
+:root {
+  --ink:#111827; --muted:#667085; --line:#d9e1ee; --soft:#f5f7fb;
+  --blue:#2563eb; --blue2:#1d4ed8; --green:#15803d; --red:#b42318;
+  --gold:#b7791f; --card:#fff;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; min-height:100%; }
+body {
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  color:var(--ink); background:#eef2f7; -webkit-font-smoothing:antialiased;
+}
+button, input, select { font:inherit; }
+.screen { display:none; }
+.screen.show { display:block; }
+.centerWrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+.card {
+  background:var(--card); border:1px solid var(--line); border-radius:12px;
+  box-shadow:0 1px 3px rgba(15,23,42,.08); padding:24px; max-width:420px; width:100%;
+}
+.card h1 { font-size:20px; margin:0 0 6px; }
+.card p.sub { color:var(--muted); font-size:13.5px; margin:0 0 18px; line-height:1.4; }
+.field { display:grid; gap:6px; margin-bottom:14px; }
+.field label { font-size:12px; font-weight:700; color:#334155; text-transform:uppercase; letter-spacing:.03em; }
+.field input {
+  border:1px solid var(--line); border-radius:8px; padding:10px 11px; width:100%;
+}
+.btn {
+  border:0; border-radius:9px; padding:11px 14px; font-weight:800; cursor:pointer;
+  background:var(--blue); color:#fff; width:100%;
+}
+.btn:hover { background:var(--blue2); }
+.btn:disabled { opacity:.55; cursor:default; }
+.btn.secondary { background:#e2e8f0; color:#1f2937; }
+.btn.small { width:auto; padding:8px 12px; font-size:13px; }
+.statusMsg { margin-top:12px; font-size:13px; line-height:1.4; color:var(--muted); }
+.errMsg { margin-top:12px; font-size:13px; line-height:1.4; color:var(--red); background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px; }
+.studentList { display:grid; gap:8px; margin:14px 0; }
+.studentBtn {
+  display:flex; justify-content:space-between; align-items:center; width:100%;
+  border:1px solid var(--line); background:#fff; border-radius:9px; padding:11px 13px;
+  cursor:pointer; font-weight:700; color:var(--ink); text-align:left;
+}
+.studentBtn:hover { background:var(--soft); }
+.studentBtn span.grade { color:var(--muted); font-weight:500; font-size:12.5px; }
+.hr { border:0; border-top:1px solid var(--line); margin:16px 0; }
+
+/* --- drill screen layout --- */
+.app { min-height:100vh; display:grid; grid-template-columns:280px minmax(0,1fr); }
+.side {
+  background:#0f172a; color:#fff; padding:18px; position:sticky; top:0; height:100vh;
+  overflow:auto; border-right:1px solid rgba(255,255,255,.08);
+}
+.brand { font-weight:800; font-size:17px; margin-bottom:2px; }
+.brandHint { display:block; color:#93a4bd; font-size:11px; font-weight:600; margin-bottom:16px; }
+.masteryGroup { color:#93a4bd; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin:14px 0 6px; }
+.masteryRow {
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
+  padding:7px 0; font-size:13px; color:#e5e7eb; border-bottom:1px solid rgba(255,255,255,.06);
+}
+.badge {
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em;
+  padding:2px 8px; border-radius:999px; white-space:nowrap;
+}
+.badge.unseen { background:#334155; color:#cbd5e1; }
+.badge.learning { background:#1e3a8a; color:#bfdbfe; }
+.badge.practicing { background:#78350f; color:#fde68a; }
+.badge.mastered { background:#14532d; color:#86efac; }
+.badge.struggling { background:#7f1d1d; color:#fecaca; }
+.badge.rusty { background:#581c87; color:#e9d5ff; }
+.side .switchBtn, .side .signOutBtn {
+  width:100%; margin-top:8px; border:1px solid rgba(255,255,255,.18); border-radius:8px;
+  padding:8px 9px; background:rgba(255,255,255,.1); color:#fff; font-weight:700; cursor:pointer; font-size:12.5px;
+}
+.main { padding:18px; min-width:0; }
+.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+.topbar h2 { margin:0; font-size:18px; }
+.panel {
+  background:var(--card); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 1px 3px rgba(15,23,42,.06); padding:18px; margin-bottom:14px;
+}
+.chapter { color:var(--gold); font-weight:800; font-size:12.5px; text-transform:uppercase; }
+.prompt { font-size:19px; line-height:1.5; margin:8px 0 16px; }
+.choicesWrap { display:grid; gap:8px; }
+.choiceBtn {
+  text-align:left; border:1px solid var(--line); background:#fff; border-radius:9px;
+  padding:12px 14px; cursor:pointer; font-size:15px;
+}
+.choiceBtn:hover:not(:disabled) { background:var(--soft); }
+.choiceBtn:disabled { cursor:default; }
+.choiceBtn.correct { background:#dcfce7; border-color:#86efac; }
+.choiceBtn.incorrect { background:#fee2e2; border-color:#fca5a5; }
+.workbench { display:grid; grid-template-columns:minmax(300px,.9fr) minmax(420px,1.4fr); gap:14px; align-items:start; }
+.canvasHead { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+.canvasHead b { font-size:14px; }
+.canvasBtns { display:flex; gap:8px; }
+.mini {
+  border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 10px;
+  cursor:pointer; color:#334155; font-size:12.5px;
+}
+canvas {
+  width:100%; height:min(56vh,600px); min-height:420px; display:block; background:#fff; border:1px solid #cbd5e1;
+  border-radius:8px; touch-action:none; -webkit-touch-callout:none;
+  -webkit-user-select:none; user-select:none;
+  background-image:linear-gradient(#f1f5f9 1px, transparent 1px);
+  background-size:100% 34px;
+}
+.canvasWrap { position:relative; }
+#markCanvas {
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  min-height:0; background:none; border:none; border-radius:8px;
+  pointer-events:none;
+}
+.gradeRow { display:flex; gap:8px; margin-top:12px; }
+.gradeBtn { flex:1; border:1px solid var(--line); border-radius:9px; padding:11px; font-weight:800; cursor:pointer; }
+.gradeBtn.good { background:#dcfce7; color:#166534; }
+.gradeBtn.bad { background:#fee2e2; color:#991b1b; }
+.gradeBtn:disabled { opacity:.5; cursor:default; }
+.feedbackPanel { display:none; }
+.feedbackPanel.show { display:block; }
+.feedbackHead { font-weight:800; font-size:16px; margin-bottom:6px; }
+.feedbackHead.correct { color:var(--green); }
+.feedbackHead.incorrect { color:var(--red); }
+.coachBox {
+  background:#eef2ff; border:1px solid #c7d2fe; color:#312e81; border-radius:9px;
+  padding:12px 14px; margin-top:10px; line-height:1.4; font-size:14px;
+}
+.coachBox strong { display:block; margin-bottom:4px; color:#3730a3; }
+.explainNote { color:var(--muted); font-size:12.5px; margin-top:8px; line-height:1.4; }
+.gatedNote { color:var(--gold); font-size:13px; margin-top:8px; }
+.nextBtn { margin-top:14px; }
+@media (max-width: 980px) {
+  .app { grid-template-columns:1fr; }
+  .side { position:relative; height:auto; max-height:30vh; }
+  .workbench { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===================== AUTH SCREEN ===================== -->
+  <section id="authScreen" class="screen show">
+    <div class="centerWrap">
+      <div class="card">
+        <h1>Science on the Court — Math</h1>
+        <p class="sub">Enter your email and we'll send a magic link to sign in. No password needed.</p>
+        <div class="field">
+          <label for="authEmail">Parent email</label>
+          <input id="authEmail" type="email" placeholder="parent@email.com" autocomplete="email">
+        </div>
+        <button class="btn" id="authSendBtn">Send magic link</button>
+        <div class="statusMsg" id="authStatus"></div>
+        <div class="errMsg" id="authErr" style="display:none"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== STUDENT SELECT SCREEN ===================== -->
+  <section id="studentScreen" class="screen">
+    <div class="centerWrap">
+      <div class="card">
+        <h1 id="familyGreeting">Your students</h1>
+        <p class="sub">Pick a student to start practicing, or add a new one.</p>
+        <div class="studentList" id="studentList"></div>
+        <div class="errMsg" id="studentScreenErr" style="display:none"></div>
+        <hr class="hr">
+        <div class="field">
+          <label for="newStudentName">New student's first name</label>
+          <input id="newStudentName" placeholder="e.g. Jordan">
+        </div>
+        <div class="field">
+          <label for="newStudentGrade">Grade level (optional)</label>
+          <input id="newStudentGrade" type="number" min="1" max="12" placeholder="e.g. 9">
+        </div>
+        <button class="btn secondary" id="newStudentBtn">Add student</button>
+        <button class="btn secondary" id="signOutFromStudentScreen" style="margin-top:10px">Sign out</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== DRILL SCREEN ===================== -->
+  <section id="drillScreen" class="screen">
+    <div class="app">
+      <aside class="side">
+        <div class="brand" id="brandStudentName">Student</div>
+        <span class="brandHint">Concept mastery</span>
+        <div id="masteryList"></div>
+        <button class="switchBtn" id="switchStudentBtn">Switch student</button>
+        <button class="signOutBtn" id="signOutBtn">Sign out</button>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h2 id="conceptHeading">Loading…</h2>
+        </div>
+
+        <div class="panel" id="problemPanel">
+          <div class="chapter" id="chapterLabel"></div>
+          <div class="prompt" id="questionText"></div>
+
+          <!-- Multiple choice -->
+          <div class="choicesWrap" id="choicesWrap" style="display:none"></div>
+
+          <!-- Free response: canvas + self-grade -->
+          <div class="workbench" id="freeResponseWrap" style="display:none">
+            <div>
+              <div class="canvasHead">
+                <b>Scratch work</b>
+                <div class="canvasBtns">
+                  <button class="mini" id="clearCanvasBtn">Clear</button>
+                  <button class="mini" id="togglePenBtn">Pen: thick</button>
+                </div>
+              </div>
+              <div class="canvasWrap">
+                <canvas id="workCanvas" width="900" height="1100"></canvas>
+                <canvas id="markCanvas" width="900" height="1100"></canvas>
+              </div>
+              <div class="gradeRow">
+                <button class="gradeBtn good" id="gradeGoodBtn">I got it</button>
+                <button class="gradeBtn bad" id="gradeBadBtn">I didn't get it</button>
+              </div>
+            </div>
+            <div class="statusMsg" id="freeResponseHint">Work the problem on the canvas, then self-grade above.</div>
+          </div>
+        </div>
+
+        <div class="panel feedbackPanel" id="feedbackPanel">
+          <div class="feedbackHead" id="feedbackHead"></div>
+          <div id="feedbackBody"></div>
+          <div class="coachBox" id="coachBox" style="display:none">
+            <strong>Coach</strong>
+            <span id="coachText"></span>
+          </div>
+          <div class="explainNote" id="explainNote"></div>
+          <div class="gatedNote" id="gatedNote" style="display:none"></div>
+          <button class="btn nextBtn" id="nextBtn" style="display:none">Next problem</button>
+        </div>
+
+        <div class="errMsg" id="drillErr" style="display:none"></div>
+      </main>
+    </div>
+  </section>
+
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// ---------------------------------------------------------------------------
+// CONFIG
+// Same live "SOTC" Supabase project the edge functions run on. Anon key
+// copied verbatim from ~/claude_projects/reps/index.html (public/safe to ship).
+// ---------------------------------------------------------------------------
+const SUPABASE_URL = 'https://flmtmihxpkcxvrasyyxt.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsbXRtaWh4cGtjeHZyYXN5eXh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MDQyNjksImV4cCI6MjA5NDM4MDI2OX0.osZWn5j7gzSJlUxr9xbpseDkxq5TDTUnj-pjVTFPEDw';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ---------------------------------------------------------------------------
+// STATE
+// ---------------------------------------------------------------------------
+const state = {
+  session: null,        // supabase auth session
+  user: null,
+  family: null,
+  students: [],
+  student: null,
+  drillSession: null,   // sessions row for this drilling run
+  concepts: [],
+  masteryMap: {},        // concept_id -> concept_mastery_state row
+  seenProblemIds: new Set(),
+  strugglingThisSession: new Set(),  // concept_ids requeued this sitting — skip until next session
+  currentConcept: null,
+  currentProblem: null,
+  problemShownAt: null,  // ms timestamp when the current problem rendered
+  penThick: true,
+};
+
+function $(id) { return document.getElementById(id); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('show'));
+  $(id).classList.add('show');
+}
+function typeset(nodes) {
+  if (window.MathJax && MathJax.typesetPromise) return MathJax.typesetPromise(nodes);
+  return Promise.resolve();
+}
+
+// ---------------------------------------------------------------------------
+// AUTH
+// ---------------------------------------------------------------------------
+$('authSendBtn').onclick = async () => {
+  const email = $('authEmail').value.trim();
+  $('authErr').style.display = 'none';
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    $('authStatus').textContent = '';
+    $('authErr').textContent = 'Enter a valid email address.';
+    $('authErr').style.display = 'block';
+    return;
+  }
+  $('authSendBtn').disabled = true;
+  $('authStatus').textContent = 'Sending magic link…';
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.href },
+  });
+  $('authSendBtn').disabled = false;
+  if (error) {
+    $('authStatus').textContent = '';
+    $('authErr').textContent = 'Could not send magic link: ' + error.message;
+    $('authErr').style.display = 'block';
+    return;
+  }
+  $('authStatus').textContent = 'Check your email for a magic link, then return to this tab.';
+};
+
+// Auth events fire repeatedly (INITIAL_SESSION, SIGNED_IN, hourly
+// TOKEN_REFRESHED, ...). Boot exactly once per signed-in user: a re-fired
+// event mid-drill must NOT re-run boot() (which would yank the student back
+// to the picker), and INITIAL_SESSION + init() racing must not double-insert
+// the family row.
+let bootedUserId = null;
+function handleAuthSession(session) {
+  state.session = session;
+  state.user = session?.user ?? null;
+  if (!session) {
+    bootedUserId = null;
+    showScreen('authScreen');
+    return;
+  }
+  if (bootedUserId === session.user.id) return; // already booted (token refresh, duplicate event)
+  bootedUserId = session.user.id;
+  boot().catch(err => {
+    bootedUserId = null;
+    showFatal('drillErr', 'Startup error: ' + err.message);
+  });
+}
+
+supabase.auth.onAuthStateChange((_event, session) => handleAuthSession(session));
+
+async function init() {
+  const { data } = await supabase.auth.getSession();
+  handleAuthSession(data.session);
+}
+
+function showFatal(elId, msg) {
+  const el = $(elId);
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ---------------------------------------------------------------------------
+// FAMILY + STUDENT SETUP
+// ---------------------------------------------------------------------------
+async function ensureFamily() {
+  const { data: existing, error: selErr } = await supabase
+    .from('families').select('*').eq('owner_user_id', state.user.id).maybeSingle();
+  if (selErr) throw new Error('Could not look up family: ' + selErr.message);
+  if (existing) return existing;
+
+  const displayName = (state.user.email || 'Family').split('@')[0] + "'s family";
+  const { data: inserted, error: insErr } = await supabase
+    .from('families')
+    .insert({ owner_user_id: state.user.id, primary_email: state.user.email, display_name: displayName })
+    .select().single();
+  if (insErr) {
+    // 23505 = unique violation on families_owner_user_id_idx: a concurrent
+    // boot already created the row — re-read it instead of failing.
+    if (insErr.code === '23505') {
+      const { data: raced, error: reErr } = await supabase
+        .from('families').select('*').eq('owner_user_id', state.user.id).maybeSingle();
+      if (raced && !reErr) return raced;
+    }
+    // Possible RLS gap: the `families_owner` policy is `for all using (...)`
+    // with no explicit `with check`. Postgres derives WITH CHECK from USING
+    // for ALL-command policies when none is given, so this *should* work —
+    // but if it doesn't, that's the first thing to check server-side.
+    throw new Error(
+      'Could not create your family record (RLS insert may be blocked — see families_owner policy). Detail: ' + insErr.message
+    );
+  }
+  return inserted;
+}
+
+async function loadStudents() {
+  const { data, error } = await supabase
+    .from('students').select('*').eq('family_id', state.family.id).eq('active', true).order('created_at');
+  if (error) throw new Error('Could not load students: ' + error.message);
+  return data ?? [];
+}
+
+function renderStudentScreen() {
+  $('familyGreeting').textContent = `Hi, ${state.family.display_name}`;
+  const wrap = $('studentList');
+  wrap.innerHTML = '';
+  if (!state.students.length) {
+    wrap.innerHTML = '<div class="statusMsg">No students yet — add one below.</div>';
+  }
+  state.students.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'studentBtn';
+    btn.innerHTML = `<span>${escapeHtml(s.display_name)}</span><span class="grade">${s.grade_level ? 'Grade ' + s.grade_level : ''}</span>`;
+    btn.onclick = () => selectStudent(s).catch(err => {
+      $('studentScreenErr').textContent = err.message;
+      $('studentScreenErr').style.display = 'block';
+    });
+    wrap.appendChild(btn);
+  });
+  showScreen('studentScreen');
+}
+
+$('newStudentBtn').onclick = async () => {
+  const name = $('newStudentName').value.trim();
+  const gradeRaw = $('newStudentGrade').value.trim();
+  $('studentScreenErr').style.display = 'none';
+  if (!name) {
+    $('studentScreenErr').textContent = 'Enter a student name.';
+    $('studentScreenErr').style.display = 'block';
+    return;
+  }
+  $('newStudentBtn').disabled = true;
+  const grade = gradeRaw ? parseInt(gradeRaw, 10) : null;
+  const { data, error } = await supabase
+    .from('students')
+    .insert({ family_id: state.family.id, display_name: name, grade_level: grade })
+    .select().single();
+  $('newStudentBtn').disabled = false;
+  if (error) {
+    $('studentScreenErr').textContent = 'Could not create student: ' + error.message;
+    $('studentScreenErr').style.display = 'block';
+    return;
+  }
+  state.students.push(data);
+  $('newStudentName').value = '';
+  $('newStudentGrade').value = '';
+  renderStudentScreen();
+};
+
+$('signOutFromStudentScreen').onclick = () => supabase.auth.signOut();
+$('signOutBtn').onclick = () => supabase.auth.signOut();
+$('switchStudentBtn').onclick = () => renderStudentScreen();
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ---------------------------------------------------------------------------
+// BOOT
+// ---------------------------------------------------------------------------
+async function boot() {
+  state.family = await ensureFamily();
+  state.students = await loadStudents();
+  renderStudentScreen();
+}
+
+async function selectStudent(student) {
+  state.student = student;
+  state.seenProblemIds = new Set();
+  state.strugglingThisSession = new Set();
+
+  const { data: sessionRow, error: sessErr } = await supabase
+    .from('sessions').insert({ student_id: student.id, mode: 'practice' }).select().single();
+  if (sessErr) throw new Error('Could not start a session: ' + sessErr.message);
+  state.drillSession = sessionRow;
+
+  $('brandStudentName').textContent = student.display_name;
+  showScreen('drillScreen');
+  await refreshConceptsAndMastery();
+  await pickConceptAndLoadProblem();
+}
+
+// ---------------------------------------------------------------------------
+// CONCEPTS + MASTERY
+// ---------------------------------------------------------------------------
+async function refreshConceptsAndMastery() {
+  const [{ data: concepts, error: cErr }, { data: mastery, error: mErr }] = await Promise.all([
+    supabase.from('concepts').select('*').order('concept_group').order('display_name'),
+    supabase.from('concept_mastery_state').select('*').eq('student_id', state.student.id),
+  ]);
+  if (cErr) throw new Error('Could not load concepts: ' + cErr.message);
+  if (mErr) throw new Error('Could not load mastery state: ' + mErr.message);
+  state.concepts = concepts ?? [];
+  state.masteryMap = {};
+  (mastery ?? []).forEach(m => { state.masteryMap[m.concept_id] = m; });
+  renderMasteryPanel();
+}
+
+function renderMasteryPanel() {
+  const wrap = $('masteryList');
+  wrap.innerHTML = '';
+  let lastGroup = null;
+  state.concepts.forEach(c => {
+    const group = c.concept_group || 'General';
+    if (group !== lastGroup) {
+      const gEl = document.createElement('div');
+      gEl.className = 'masteryGroup';
+      gEl.textContent = group;
+      wrap.appendChild(gEl);
+      lastGroup = group;
+    }
+    const status = state.masteryMap[c.id]?.status ?? 'unseen';
+    const row = document.createElement('div');
+    row.className = 'masteryRow';
+    row.innerHTML = `<span>${escapeHtml(c.display_name)}</span><span class="badge ${status}">${status}</span>`;
+    wrap.appendChild(row);
+  });
+}
+
+function pickCurrentConcept() {
+  const notMastered = state.concepts.filter(c => (state.masteryMap[c.id]?.status ?? 'unseen') !== 'mastered');
+  // Skip concepts the engine flagged struggling this sitting (requeued) so a
+  // stuck student moves on instead of looping forever; if EVERY remaining
+  // concept is struggling, fall back to the first rather than dead-ending.
+  const fresh = notMastered.find(c => !state.strugglingThisSession.has(c.id));
+  return fresh || notMastered[0] || state.concepts[0] || null;
+}
+
+// ---------------------------------------------------------------------------
+// PROBLEM SERVING
+// ---------------------------------------------------------------------------
+async function fetchProblemsForConcept(conceptId) {
+  const { data, error } = await supabase
+    .from('problems')
+    .select('*, choices(*)')
+    .eq('concept_id', conceptId)
+    .eq('status', 'active')
+    .order('sort_order', { foreignTable: 'choices' });
+  if (error) throw new Error('Could not load problems: ' + error.message);
+  return data ?? [];
+}
+
+async function pickConceptAndLoadProblem() {
+  const concept = pickCurrentConcept();
+  if (!concept) {
+    showFatal('drillErr', 'No concepts found in the curriculum yet.');
+    return;
+  }
+  await loadProblemForConcept(concept);
+}
+
+async function loadProblemForConcept(concept) {
+  state.currentConcept = concept;
+  $('conceptHeading').textContent = concept.display_name;
+  $('chapterLabel').textContent = concept.concept_group || '';
+  $('drillErr').style.display = 'none';
+
+  const problems = await fetchProblemsForConcept(concept.id);
+  if (!problems.length) {
+    showFatal('drillErr', `No active problems for concept "${concept.display_name}" yet.`);
+    return;
+  }
+  const unseen = problems.filter(p => !state.seenProblemIds.has(p.id));
+  const pool = unseen.length ? unseen : problems;
+  const problem = pool[Math.floor(Math.random() * pool.length)];
+  state.currentProblem = problem;
+  state.seenProblemIds.add(problem.id);
+  await renderProblem(problem);
+}
+
+async function renderProblem(problem) {
+  $('feedbackPanel').classList.remove('show');
+  $('nextBtn').style.display = 'none';
+  $('gatedNote').style.display = 'none';
+  $('coachBox').style.display = 'none';
+  $('explainNote').textContent = '';
+
+  // textContent, not innerHTML: problem content must never be parsed as HTML.
+  // Service-role-authored today, but problems.source already anticipates
+  // 'parent_uploaded'/'agent_authored' — this closes the stored-XSS path
+  // before those land. MathJax typesets text nodes, so rendering is unchanged.
+  $('questionText').textContent = `\\(${problem.question_latex}\\)`;
+
+  // Branch purely on choice count, not on `source`. As of the Phase 1 content
+  // migration, ALL seeded problems (hand_authored + legacy_migrated) carry 4
+  // real distractor choices, so this always takes the multiple-choice path
+  // today. The exactly-1-choice branch is intentionally kept alive (not
+  // deleted) for future hand-authored free-response content — see the ported
+  // canvas/self-grade/analyze-work wiring below.
+  const isMultipleChoice = (problem.choices || []).length > 1;
+  if (isMultipleChoice) {
+    $('choicesWrap').style.display = 'grid';
+    $('freeResponseWrap').style.display = 'none';
+    renderChoices(problem);
+  } else {
+    $('choicesWrap').style.display = 'none';
+    $('freeResponseWrap').style.display = 'grid';
+    clearCanvas();
+    $('gradeGoodBtn').disabled = false;
+    $('gradeBadBtn').disabled = false;
+    $('freeResponseHint').textContent = 'Work the problem on the canvas, then self-grade above.';
+  }
+  await typeset([$('questionText'), $('choicesWrap')]);
+  state.problemShownAt = Date.now(); // start time-on-task clock after render
+}
+
+function renderChoices(problem) {
+  const wrap = $('choicesWrap');
+  wrap.innerHTML = '';
+  (problem.choices || []).forEach(choice => {
+    const btn = document.createElement('button');
+    btn.className = 'choiceBtn';
+    btn.textContent = `\\(${choice.label_latex}\\)`; // textContent — see questionText note
+
+    btn.dataset.choiceId = choice.id;
+    btn.onclick = () => handleMultipleChoiceAnswer(problem, choice, wrap);
+    wrap.appendChild(btn);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SUBMIT + DIAGNOSE
+// ---------------------------------------------------------------------------
+async function callSubmitAttempt(payload) {
+  const secondsTotal = state.problemShownAt
+    ? Math.round((Date.now() - state.problemShownAt) / 1000)
+    : null;
+  const { data, error } = await supabase.functions.invoke('submit-attempt', {
+    body: {
+      session_id: state.drillSession.id,
+      student_id: state.student.id,
+      problem_id: state.currentProblem.id,
+      seconds_total: secondsTotal,
+      ...payload,
+    },
+  });
+  if (error) throw new Error('submit-attempt failed: ' + error.message);
+  if (!data || data.ok === false) throw new Error('submit-attempt error: ' + (data?.error || 'unknown'));
+  return data;
+}
+
+async function callAnalyzeWork({ solutionId, image, selfGrade }) {
+  // Identity is derived server-side from the JWT the client already sends —
+  // no client-supplied userId (it was spoofable).
+  const { data, error } = await supabase.functions.invoke('analyze-work', {
+    body: {
+      solution_id: solutionId,
+      image,
+      problem: state.currentProblem.question_latex,
+      skill: state.currentConcept.display_name,
+      solution: state.currentProblem.correct_answer_latex,
+      selfGrade,
+    },
+  });
+  if (error) throw new Error('analyze-work failed: ' + error.message);
+  return data;
+}
+
+async function handleMultipleChoiceAnswer(problem, choice, wrap) {
+  wrap.querySelectorAll('.choiceBtn').forEach(b => b.disabled = true);
+  try {
+    const result = await callSubmitAttempt({ selected_choice_id: choice.id });
+    wrap.querySelectorAll('.choiceBtn').forEach(b => {
+      if (b.dataset.choiceId === choice.id) {
+        b.classList.add(result.is_correct ? 'correct' : 'incorrect');
+      } else if (!result.is_correct && (problem.choices.find(c => c.id === b.dataset.choiceId)?.is_correct)) {
+        b.classList.add('correct');
+      }
+    });
+    showFeedback({
+      correct: result.is_correct,
+      headText: result.is_correct ? 'Correct!' : 'Not quite.',
+      next: result.next,
+    });
+    if (state.masteryMap[state.currentConcept.id]) {
+      state.masteryMap[state.currentConcept.id].status = result.status;
+    } else {
+      state.masteryMap[state.currentConcept.id] = { concept_id: state.currentConcept.id, status: result.status };
+    }
+    if (result.status === 'struggling') state.strugglingThisSession.add(state.currentConcept.id);
+    renderMasteryPanel();
+  } catch (err) {
+    showFatal('drillErr', err.message);
+    wrap.querySelectorAll('.choiceBtn').forEach(b => b.disabled = false);
+  }
+}
+
+$('gradeGoodBtn').onclick = () => handleFreeResponseGrade(true);
+$('gradeBadBtn').onclick = () => handleFreeResponseGrade(false);
+
+async function handleFreeResponseGrade(gotIt) {
+  $('gradeGoodBtn').disabled = true;
+  $('gradeBadBtn').disabled = true;
+  $('freeResponseHint').textContent = 'Checking your work…';
+
+  let submitResult;
+  try {
+    submitResult = await callSubmitAttempt({ self_correct: gotIt });
+  } catch (err) {
+    showFatal('drillErr', err.message);
+    $('gradeGoodBtn').disabled = false;
+    $('gradeBadBtn').disabled = false;
+    $('freeResponseHint').textContent = 'Work the problem on the canvas, then self-grade above.';
+    return;
+  }
+
+  if (state.masteryMap[state.currentConcept.id]) {
+    state.masteryMap[state.currentConcept.id].status = submitResult.status;
+  } else {
+    state.masteryMap[state.currentConcept.id] = { concept_id: state.currentConcept.id, status: submitResult.status };
+  }
+  if (submitResult.status === 'struggling') state.strugglingThisSession.add(state.currentConcept.id);
+  renderMasteryPanel();
+
+  showFeedback({
+    correct: gotIt,
+    headText: gotIt ? 'Nice — self-graded correct.' : 'Self-graded: not this time.',
+    next: submitResult.next,
+  });
+  $('freeResponseHint').textContent = 'Analyzing your work…';
+
+  try {
+    const image = captureCanvasPNG();
+    const diag = await callAnalyzeWork({ solutionId: submitResult.solution_id, image, selfGrade: gotIt ? 'good' : 'bad' });
+    if (diag && diag.gated) {
+      $('gatedNote').textContent = 'AI coaching limit reached for now — you can still keep practicing.';
+      $('gatedNote').style.display = 'block';
+    } else if (diag && diag.ok) {
+      $('coachBox').style.display = 'block';
+      $('coachText').textContent = diag.coaching_note || diag.coaching_hint || '';
+      $('explainNote').textContent = diag.explanation || '';
+      if (diag.marks && diag.marks.length) drawMarks(diag.marks);
+    } else {
+      $('gatedNote').textContent = 'AI feedback unavailable right now.';
+      $('gatedNote').style.display = 'block';
+    }
+  } catch (err) {
+    $('gatedNote').textContent = 'AI feedback unavailable: ' + err.message;
+    $('gatedNote').style.display = 'block';
+  }
+  $('freeResponseHint').textContent = 'Work the problem on the canvas, then self-grade above.';
+}
+
+function showFeedback({ correct, headText, next }) {
+  const head = $('feedbackHead');
+  head.textContent = headText;
+  head.className = 'feedbackHead ' + (correct ? 'correct' : 'incorrect');
+  $('feedbackPanel').classList.add('show');
+  const nextBtn = $('nextBtn');
+  nextBtn.style.display = 'block';
+  nextBtn.onclick = () => {
+    nextBtn.style.display = 'none';
+    handleNext(next).catch(err => showFatal('drillErr', err.message));
+  };
+}
+
+async function handleNext(next) {
+  $('drillErr').style.display = 'none';
+  if (!next || next.mode === 'advance' || next.mode === 'requeue') {
+    // 'advance': concept mastered. 'requeue': engine flagged struggling —
+    // move to a different concept this sitting (pickCurrentConcept skips
+    // concepts in strugglingThisSession) instead of looping the stuck one.
+    await refreshConceptsAndMastery();
+    await pickConceptAndLoadProblem();
+  } else {
+    // 'continue' — serve another problem from the same concept.
+    await loadProblemForConcept(state.currentConcept);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CANVAS — ported near-verbatim from ~/claude_projects/reps/index.html
+// (smooth pointer-based drawing w/ quadratic-curve interpolation, teacher
+// markup rendering, PNG capture). Only ID/variable references adjusted.
+// ---------------------------------------------------------------------------
+const canvas = $('workCanvas');
+const ctx = canvas.getContext('2d');
+const markCanvas = $('markCanvas');
+const mctx = markCanvas.getContext('2d');
+
+function clearMarks() { if (mctx) mctx.clearRect(0, 0, markCanvas.width, markCanvas.height); }
+
+function drawMarks(marks) {
+  clearMarks();
+  if (!marks || !marks.length) { markCanvas.style.display = 'none'; return; }
+  markCanvas.style.display = 'block';
+  const W = markCanvas.width, H = markCanvas.height, c = mctx, RED = '#e0245e';
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  for (const m of marks) {
+    const x = (m.x || 0) * W, y = (m.y || 0) * H, w = Math.max(m.w || 0.08, 0.02) * W, h = Math.max(m.h || 0.05, 0.03) * H;
+    const cx = x + w / 2, cy = y + h / 2;
+    c.strokeStyle = RED; c.fillStyle = RED; c.lineWidth = 5;
+    if (m.type === 'circle') { c.beginPath(); c.ellipse(cx, cy, w / 2 + 12, h / 2 + 12, 0, 0, Math.PI * 2); c.stroke(); }
+    else if (m.type === 'strike') { c.beginPath(); c.moveTo(x - 4, cy); c.lineTo(x + w + 4, cy); c.stroke(); }
+    else if (m.type === 'underline') { c.beginPath(); c.moveTo(x - 4, y + h + 6); c.lineTo(x + w + 4, y + h + 6); c.stroke(); }
+    else if (m.type === 'check') { const k = x - 12; c.beginPath(); c.moveTo(k - 26, cy + 2); c.lineTo(k - 14, cy + 16); c.lineTo(k + 6, cy - 18); c.stroke(); }
+    else if (m.type === 'arrow') { const tx = x + w + 8, ta = Math.min(x + w + 120, W - 12); c.beginPath(); c.moveTo(ta, cy); c.lineTo(tx, cy); c.stroke(); c.beginPath(); c.moveTo(tx, cy); c.lineTo(tx + 16, cy - 8); c.lineTo(tx + 16, cy + 8); c.closePath(); c.fill(); }
+    if (m.note) {
+      c.font = 'bold 24px -apple-system,BlinkMacSystemFont,sans-serif';
+      let nx = (m.type === 'check') ? x + w + 10 : Math.min(x + w + 18, W - 280); if (nx < 4) nx = 4;
+      const ny = (m.type === 'circle' || m.type === 'strike') ? Math.min(y + h + 34, H - 8) : cy + 8;
+      c.lineWidth = 6; c.strokeStyle = 'rgba(255,255,255,0.95)'; c.strokeText(m.note, nx, ny);
+      c.fillStyle = RED; c.fillText(m.note, nx, ny);
+    }
+  }
+}
+
+let drawing = false;
+let strokePoints = [];
+function pos(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: (t.clientX - r.left) * canvas.width / r.width, y: (t.clientY - r.top) * canvas.height / r.height };
+}
+function setupPen() {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#111827';
+  ctx.lineWidth = state.penThick ? 5 : 2;
+}
+function drawSmoothPoint(p) {
+  strokePoints.push(p);
+  setupPen();
+  if (strokePoints.length === 1) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#111827';
+    ctx.fill();
+    return;
+  }
+  if (strokePoints.length === 2) {
+    const a = strokePoints[0];
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    return;
+  }
+  const a = strokePoints[strokePoints.length - 3];
+  const b = strokePoints[strokePoints.length - 2];
+  const c = strokePoints[strokePoints.length - 1];
+  const midBC = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+  ctx.beginPath();
+  ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+  ctx.quadraticCurveTo(b.x, b.y, midBC.x, midBC.y);
+  ctx.stroke();
+}
+function eventPoints(e) {
+  const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [e];
+  return events.map(pos);
+}
+function startDraw(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  canvas.setPointerCapture?.(e.pointerId);
+  drawing = true;
+  strokePoints = [];
+  eventPoints(e).forEach(drawSmoothPoint);
+  e.preventDefault();
+}
+function moveDraw(e) {
+  if (!drawing) return;
+  eventPoints(e).forEach(drawSmoothPoint);
+  e.preventDefault();
+}
+function endDraw(e) {
+  if (drawing && e) eventPoints(e).forEach(drawSmoothPoint);
+  drawing = false;
+  strokePoints = [];
+}
+function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); clearMarks(); }
+function captureCanvasPNG() {
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.width; tmp.height = canvas.height;
+  const t = tmp.getContext('2d');
+  t.fillStyle = '#fff'; t.fillRect(0, 0, tmp.width, tmp.height);
+  t.drawImage(canvas, 0, 0);
+  return tmp.toDataURL('image/png');
+}
+
+document.addEventListener('selectstart', e => {
+  if (e.target.closest?.('input, textarea')) return;
+  if (e.target.closest?.('.app')) e.preventDefault();
+}, { passive: false });
+document.addEventListener('contextmenu', e => {
+  if (e.target.closest?.('input, textarea')) return;
+  if (e.target.closest?.('.app')) e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+canvas.addEventListener('pointerdown', startDraw, { passive: false });
+canvas.addEventListener('pointermove', moveDraw, { passive: false });
+canvas.addEventListener('pointerup', endDraw, { passive: false });
+canvas.addEventListener('pointercancel', endDraw, { passive: false });
+$('clearCanvasBtn').onclick = clearCanvas;
+$('togglePenBtn').onclick = () => {
+  state.penThick = !state.penThick;
+  $('togglePenBtn').textContent = `Pen: ${state.penThick ? 'thick' : 'thin'}`;
+};
+
+// ---------------------------------------------------------------------------
+init();
+</script>
+</body>
+</html>
