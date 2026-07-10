@@ -164,6 +164,25 @@ canvas {
         <button class="btn" id="authSendBtn">Send magic link</button>
         <div class="statusMsg" id="authStatus"></div>
         <div class="errMsg" id="authErr" style="display:none"></div>
+
+        <hr class="hr">
+        <div class="field">
+          <label for="classCodeInput">Student? Enter your class code</label>
+          <input id="classCodeInput" placeholder="e.g. SOTC-42" autocapitalize="characters" autocomplete="off">
+        </div>
+        <button class="btn secondary" id="joinClassBtn">Join class</button>
+        <div id="claimPanel" style="display:none; margin-top:14px;">
+          <p class="sub" id="claimHint">Tap your name:</p>
+          <div class="studentList" id="rosterList"></div>
+          <div id="pinBlock" style="display:none">
+            <div class="field">
+              <label id="pinLabel" for="pinInput">Enter your PIN</label>
+              <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4-digit PIN" autocomplete="off">
+            </div>
+            <button class="btn" id="pinSubmitBtn">Let's go</button>
+          </div>
+        </div>
+        <div class="errMsg" id="claimErr" style="display:none"></div>
       </div>
     </div>
   </section>
@@ -186,6 +205,10 @@ canvas {
           <input id="newStudentGrade" type="number" min="1" max="12" placeholder="e.g. 9">
         </div>
         <button class="btn secondary" id="newStudentBtn">Add student</button>
+        <div class="statusMsg" id="classCodeRow" style="margin-top:12px">
+          Class code for student sign-in: <b id="classCodeVal">none yet</b>
+          <button class="mini" id="genCodeBtn" style="margin-left:8px">Generate</button>
+        </div>
         <button class="btn secondary" id="signOutFromStudentScreen" style="margin-top:10px">Sign out</button>
       </div>
     </div>
@@ -285,6 +308,7 @@ const state = {
   currentConcept: null,
   currentProblem: null,
   problemShownAt: null,  // ms timestamp when the current problem rendered
+  isDeviceStudent: false, // anonymous class-code login, locked to one student
   penThick: true,
 };
 
@@ -342,7 +366,11 @@ function handleAuthSession(session) {
   }
   if (bootedUserId === session.user.id) return; // already booted (token refresh, duplicate event)
   bootedUserId = session.user.id;
-  boot().catch(err => {
+  // Anonymous session = a student device (classroom onboarding). It either
+  // already has a student binding (go straight to drilling) or is mid-claim
+  // (leave the auth screen alone; the join-class flow drives it).
+  const entry = session.user.is_anonymous ? studentBoot() : boot();
+  entry.catch(err => {
     bootedUserId = null;
     showFatal('drillErr', 'Startup error: ' + err.message);
   });
@@ -403,6 +431,7 @@ async function loadStudents() {
 
 function renderStudentScreen() {
   $('familyGreeting').textContent = `Hi, ${state.family.display_name}`;
+  $('classCodeVal').textContent = state.family.class_code || 'none yet';
   const wrap = $('studentList');
   wrap.innerHTML = '';
   if (!state.students.length) {
@@ -449,6 +478,24 @@ $('newStudentBtn').onclick = async () => {
 };
 
 $('signOutFromStudentScreen').onclick = () => supabase.auth.signOut();
+
+// Class code: lets students join via the class-code flow. Unambiguous
+// alphabet (no 0/O/1/I); regenerating invalidates the old code for future
+// joins but does not unlink already-claimed devices.
+$('genCodeBtn').onclick = async () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const code = 'SOTC-' + Array.from(crypto.getRandomValues(new Uint8Array(4)))
+    .map(b => alphabet[b % alphabet.length]).join('');
+  const { data, error } = await supabase
+    .from('families').update({ class_code: code }).eq('id', state.family.id).select().single();
+  if (error) {
+    $('studentScreenErr').textContent = 'Could not set class code: ' + error.message;
+    $('studentScreenErr').style.display = 'block';
+    return;
+  }
+  state.family = data;
+  renderStudentScreen();
+};
 $('signOutBtn').onclick = () => supabase.auth.signOut();
 $('switchStudentBtn').onclick = () => renderStudentScreen();
 
@@ -464,6 +511,99 @@ async function boot() {
   state.students = await loadStudents();
   renderStudentScreen();
 }
+
+// Student-device boot: if this anonymous user is already bound to a student
+// (via join-class), skip everything and drill as them. Otherwise do nothing —
+// the auth screen's class-code flow takes over.
+async function studentBoot() {
+  const { data: link } = await supabase
+    .from('student_devices')
+    .select('student_id, students(id, display_name)')
+    .maybeSingle();
+  if (link?.students) {
+    state.isDeviceStudent = true;
+    $('switchStudentBtn').style.display = 'none';
+    await selectStudent(link.students);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// STUDENT CLASS-CODE FLOW (classroom onboarding)
+// ---------------------------------------------------------------------------
+const claim = { code: null, student: null };
+
+function showClaimErr(msg) {
+  $('claimErr').textContent = msg;
+  $('claimErr').style.display = 'block';
+}
+
+$('joinClassBtn').onclick = async () => {
+  $('claimErr').style.display = 'none';
+  const code = $('classCodeInput').value.trim().toUpperCase();
+  if (!code) { showClaimErr('Enter your class code.'); return; }
+  $('joinClassBtn').disabled = true;
+  try {
+    // A real (anonymous) session is needed so join-class sees a JWT.
+    if (!state.session) {
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) throw new Error('Could not start: ' + error.message +
+        (/(disabled|not enabled)/i.test(error.message) ? ' — anonymous sign-ins must be enabled in Supabase Auth settings.' : ''));
+    }
+    const { data, error } = await supabase.functions.invoke('join-class', { body: { class_code: code } });
+    if (error || !data?.ok) throw new Error((data && data.error) || error?.message || 'Could not find that class.');
+    claim.code = code;
+    renderRoster(data.students);
+  } catch (err) {
+    showClaimErr(err.message);
+  } finally {
+    $('joinClassBtn').disabled = false;
+  }
+};
+
+function renderRoster(students) {
+  const wrap = $('rosterList');
+  wrap.innerHTML = '';
+  if (!students.length) {
+    wrap.innerHTML = '<div class="statusMsg">No students in this class yet — ask your coach.</div>';
+  }
+  students.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'studentBtn';
+    btn.innerHTML = `<span>${escapeHtml(s.display_name)}</span><span class="grade">${s.has_pin ? '' : 'new'}</span>`;
+    btn.onclick = () => {
+      claim.student = s;
+      $('pinLabel').textContent = s.has_pin
+        ? `Enter ${s.display_name}'s PIN`
+        : `Create a PIN for ${s.display_name} (4 digits — remember it!)`;
+      $('pinBlock').style.display = 'block';
+      $('pinInput').value = '';
+      $('pinInput').focus();
+    };
+    wrap.appendChild(btn);
+  });
+  $('claimPanel').style.display = 'block';
+}
+
+$('pinSubmitBtn').onclick = async () => {
+  $('claimErr').style.display = 'none';
+  const pin = $('pinInput').value.trim();
+  if (!/^[0-9]{4,8}$/.test(pin)) { showClaimErr('PIN must be 4-8 digits.'); return; }
+  if (!claim.student) { showClaimErr('Pick your name first.'); return; }
+  $('pinSubmitBtn').disabled = true;
+  try {
+    const { data, error } = await supabase.functions.invoke('join-class', {
+      body: { class_code: claim.code, student_id: claim.student.id, pin },
+    });
+    if (error || !data?.ok) throw new Error((data && data.error) || error?.message || 'Could not join.');
+    state.isDeviceStudent = true;
+    $('switchStudentBtn').style.display = 'none';
+    await selectStudent(data.student);
+  } catch (err) {
+    showClaimErr(err.message);
+  } finally {
+    $('pinSubmitBtn').disabled = false;
+  }
+};
 
 async function selectStudent(student) {
   state.student = student;
