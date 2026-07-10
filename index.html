@@ -179,6 +179,10 @@ canvas {
               <label id="pinLabel" for="pinInput">Enter your PIN</label>
               <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4-digit PIN" autocomplete="off">
             </div>
+            <div class="field" id="parentEmailField" style="display:none">
+              <label for="parentEmailInput">Parent or guardian's email (for progress updates)</label>
+              <input id="parentEmailInput" type="email" placeholder="parent@email.com" autocomplete="off">
+            </div>
             <button class="btn" id="pinSubmitBtn">Let's go</button>
           </div>
         </div>
@@ -203,6 +207,10 @@ canvas {
         <div class="field">
           <label for="newStudentGrade">Grade level (optional)</label>
           <input id="newStudentGrade" type="number" min="1" max="12" placeholder="e.g. 9">
+        </div>
+        <div class="field">
+          <label for="newStudentParentEmail">Parent email (progress updates)</label>
+          <input id="newStudentParentEmail" type="email" placeholder="parent@email.com" autocomplete="off">
         </div>
         <button class="btn secondary" id="newStudentBtn">Add student</button>
         <div class="statusMsg" id="classCodeRow" style="margin-top:12px">
@@ -426,7 +434,15 @@ async function loadStudents() {
   const { data, error } = await supabase
     .from('students').select('*').eq('family_id', state.family.id).eq('active', true).order('created_at');
   if (error) throw new Error('Could not load students: ' + error.message);
-  return data ?? [];
+  const students = data ?? [];
+  state.guardianEmails = {};
+  if (students.length) {
+    const { data: guardians } = await supabase
+      .from('student_guardians').select('student_id, email')
+      .in('student_id', students.map(s => s.id));
+    (guardians ?? []).forEach(g => { state.guardianEmails[g.student_id] = g.email; });
+  }
+  return students;
 }
 
 function renderStudentScreen() {
@@ -446,6 +462,31 @@ function renderStudentScreen() {
       $('studentScreenErr').style.display = 'block';
     });
     wrap.appendChild(btn);
+
+    // Guardian email line: show it, or offer inline capture if missing.
+    const meta = document.createElement('div');
+    meta.className = 'statusMsg';
+    meta.style.margin = '2px 0 6px 4px';
+    const email = state.guardianEmails[s.id];
+    if (email) {
+      meta.textContent = 'Parent: ' + email;
+    } else {
+      const input = document.createElement('input');
+      input.type = 'email'; input.placeholder = 'parent@email.com';
+      input.style.cssText = 'border:1px solid var(--line); border-radius:6px; padding:4px 7px; font-size:12.5px; width:200px;';
+      const save = document.createElement('button');
+      save.className = 'mini'; save.textContent = 'Save parent email';
+      save.onclick = async () => {
+        const val = input.value.trim().toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) { input.style.borderColor = 'var(--red)'; return; }
+        const { error } = await supabase.from('student_guardians').upsert({ student_id: s.id, email: val });
+        if (error) { input.style.borderColor = 'var(--red)'; return; }
+        state.guardianEmails[s.id] = val;
+        renderStudentScreen();
+      };
+      meta.append('Parent: ', input, ' ', save);
+    }
+    wrap.appendChild(meta);
   });
   showScreen('studentScreen');
 }
@@ -453,9 +494,15 @@ function renderStudentScreen() {
 $('newStudentBtn').onclick = async () => {
   const name = $('newStudentName').value.trim();
   const gradeRaw = $('newStudentGrade').value.trim();
+  const parentEmail = $('newStudentParentEmail').value.trim().toLowerCase();
   $('studentScreenErr').style.display = 'none';
   if (!name) {
     $('studentScreenErr').textContent = 'Enter a student name.';
+    $('studentScreenErr').style.display = 'block';
+    return;
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(parentEmail)) {
+    $('studentScreenErr').textContent = 'Enter a valid parent email — every student needs one for progress updates.';
     $('studentScreenErr').style.display = 'block';
     return;
   }
@@ -465,15 +512,27 @@ $('newStudentBtn').onclick = async () => {
     .from('students')
     .insert({ family_id: state.family.id, display_name: name, grade_level: grade })
     .select().single();
-  $('newStudentBtn').disabled = false;
   if (error) {
+    $('newStudentBtn').disabled = false;
     $('studentScreenErr').textContent = 'Could not create student: ' + error.message;
     $('studentScreenErr').style.display = 'block';
     return;
   }
+  const { error: gErr } = await supabase
+    .from('student_guardians').insert({ student_id: data.id, email: parentEmail });
+  $('newStudentBtn').disabled = false;
+  if (gErr) {
+    // student exists but email failed — surface it; the inline capture on the
+    // roster row (and the claim-time gate) will backstop.
+    $('studentScreenErr').textContent = 'Student created, but saving the parent email failed: ' + gErr.message;
+    $('studentScreenErr').style.display = 'block';
+  } else {
+    state.guardianEmails[data.id] = parentEmail;
+  }
   state.students.push(data);
   $('newStudentName').value = '';
   $('newStudentGrade').value = '';
+  $('newStudentParentEmail').value = '';
   renderStudentScreen();
 };
 
@@ -575,6 +634,8 @@ function renderRoster(students) {
       $('pinLabel').textContent = s.has_pin
         ? `Enter ${s.display_name}'s PIN`
         : `Create a PIN for ${s.display_name} (4 digits — remember it!)`;
+      $('parentEmailField').style.display = s.needs_parent_email ? 'block' : 'none';
+      $('parentEmailInput').value = '';
       $('pinBlock').style.display = 'block';
       $('pinInput').value = '';
       $('pinInput').focus();
@@ -589,11 +650,20 @@ $('pinSubmitBtn').onclick = async () => {
   const pin = $('pinInput').value.trim();
   if (!/^[0-9]{4,8}$/.test(pin)) { showClaimErr('PIN must be 4-8 digits.'); return; }
   if (!claim.student) { showClaimErr('Pick your name first.'); return; }
+  const body = { class_code: claim.code, student_id: claim.student.id, pin };
+  if ($('parentEmailField').style.display !== 'none') {
+    const pe = $('parentEmailInput').value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(pe)) { showClaimErr("Enter your parent or guardian's email."); return; }
+    body.parent_email = pe;
+  }
   $('pinSubmitBtn').disabled = true;
   try {
-    const { data, error } = await supabase.functions.invoke('join-class', {
-      body: { class_code: claim.code, student_id: claim.student.id, pin },
-    });
+    const { data, error } = await supabase.functions.invoke('join-class', { body });
+    if (data?.need === 'parent_email') {
+      // Server says this student still needs a guardian email on file.
+      $('parentEmailField').style.display = 'block';
+      throw new Error("One more thing — enter your parent or guardian's email above.");
+    }
     if (error || !data?.ok) throw new Error((data && data.error) || error?.message || 'Could not join.');
     state.isDeviceStudent = true;
     $('switchStudentBtn').style.display = 'none';
