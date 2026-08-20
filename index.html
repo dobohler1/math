@@ -194,6 +194,9 @@ canvas {
               <button class="btn" id="pinSubmitBtn">Let's go</button>
             </div>
           </div>
+          <hr class="hr">
+          <p class="sub" style="margin-bottom:8px">No class code? You don't need one.</p>
+          <button class="btn secondary" id="soloStartBtn">Just start practicing</button>
           <button class="btn secondary" id="claimSignOutBtn" style="margin-top:12px">Not you? Sign out</button>
         </div>
         <div class="errMsg" id="claimErr" style="display:none"></div>
@@ -454,6 +457,9 @@ async function routeSession(session) {
     return selectStudent(bound);
   }
   if (localStorage.getItem(ROLE_KEY) === 'student' || session.user.is_anonymous) {
+    // A solo student has no binding, so the check above misses them. Resume
+    // their existing profile rather than asking for a class code they never had.
+    if (!session.user.is_anonymous && await resumeSoloIfAny()) return;
     showClaimStep(session);
     return;
   }
@@ -681,6 +687,17 @@ async function endSession() {
 }
 $('signOutBtn').onclick = () => endSession();
 $('claimSignOutBtn').onclick = () => endSession();
+$('soloStartBtn').onclick = async () => {
+  $('claimErr').style.display = 'none';
+  $('soloStartBtn').disabled = true;
+  try {
+    await startSolo();
+  } catch (err) {
+    console.error('[auth] startSolo failed', err);
+    showClaimErr(err.message);
+    $('soloStartBtn').disabled = false;
+  }
+};
 $('switchStudentBtn').onclick = () => renderStudentScreen();
 
 function escapeHtml(s) {
@@ -694,6 +711,63 @@ async function boot() {
   state.family = await ensureFamily();
   state.students = await loadStudents();
   renderStudentScreen();
+}
+
+// ---------------------------------------------------------------------------
+// SOLO STUDENTS (no class code, no coach)
+//
+// A solo student is simply the owner of a one-student family. That needs no
+// binding, no class code, no edge function and no schema change: every table
+// already carries an *_owner_* policy (family ownership) beside its *_device_*
+// one (student_devices binding), so owning the family grants exactly the access
+// a claimed student gets. Progress therefore follows the Google account across
+// devices the same way a claimed student's does.
+// ---------------------------------------------------------------------------
+
+// Best available human name for a self-serve student, without asking.
+function soloDisplayName() {
+  const m = state.user?.user_metadata ?? {};
+  const raw = m.full_name || m.name || (state.user?.email || 'Student').split('@')[0];
+  return String(raw).trim().slice(0, 60) || 'Student';
+}
+
+// Drop into the drill as a solo student, creating the family/student on the
+// first run and reusing them on every run after (including on a new device).
+async function startSolo() {
+  state.family = await ensureFamily();
+  let students = await loadStudents();
+  let student = students[0];
+  if (!student) {
+    const { data, error } = await supabase
+      .from('students')
+      .insert({ family_id: state.family.id, display_name: soloDisplayName() })
+      .select().single();
+    if (error) throw new Error('Could not set up your practice profile: ' + error.message);
+    student = data;
+    state.students = [student];
+  }
+  localStorage.removeItem(ROLE_KEY);
+  state.isDeviceStudent = true;
+  $('switchStudentBtn').style.display = 'none';
+  return selectStudent(student);
+}
+
+// A returning solo student on any device: they have no binding (they never
+// claimed a roster entry) but they do already own their family, so send them
+// straight back to drilling instead of re-showing the class-code screen.
+async function resumeSoloIfAny() {
+  const { data: fam, error } = await supabase
+    .from('families').select('*').eq('owner_user_id', state.user.id).maybeSingle();
+  if (error) throw new Error('Could not look up your practice profile: ' + error.message);
+  if (!fam) return false;
+  state.family = fam;
+  const students = await loadStudents();
+  if (students.length !== 1) return false;   // a real coach roster, not a solo profile
+  localStorage.removeItem(ROLE_KEY);
+  state.isDeviceStudent = true;
+  $('switchStudentBtn').style.display = 'none';
+  await selectStudent(students[0]);
+  return true;
 }
 
 // Is this auth user already bound to a student (via join-class)?
