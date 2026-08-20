@@ -196,6 +196,10 @@ canvas {
           </div>
           <hr class="hr">
           <p class="sub" style="margin-bottom:8px">No class code? You don't need one.</p>
+          <div class="field">
+            <label for="soloParentEmail">Parent or guardian's email <em>(optional)</em></label>
+            <input id="soloParentEmail" type="email" placeholder="parent@email.com" autocomplete="off">
+          </div>
           <button class="btn secondary" id="soloStartBtn">Just start practicing</button>
           <button class="btn secondary" id="claimSignOutBtn" style="margin-top:12px">Not you? Sign out</button>
         </div>
@@ -497,6 +501,7 @@ function resetAuthScreen() {
   $('pinInput').value = '';
   $('parentEmailField').style.display = 'none';
   $('parentEmailInput').value = '';
+  $('soloParentEmail').value = '';
   $('claimErr').style.display = 'none';
   $('googleStatus').textContent = '';
   $('classCodeInput').value = '';
@@ -689,6 +694,11 @@ $('signOutBtn').onclick = () => endSession();
 $('claimSignOutBtn').onclick = () => endSession();
 $('soloStartBtn').onclick = async () => {
   $('claimErr').style.display = 'none';
+  const guardian = $('soloParentEmail').value.trim();
+  if (guardian && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guardian)) {
+    showClaimErr("That parent email doesn't look right. Fix it, or leave it blank to skip.");
+    return;
+  }
   $('soloStartBtn').disabled = true;
   try {
     await startSolo();
@@ -745,6 +755,16 @@ async function startSolo() {
     if (error) throw new Error('Could not set up your practice profile: ' + error.message);
     student = data;
     state.students = [student];
+  }
+  // Optional on purpose: a student with no adult to name must still be able to
+  // practice. Format is validated before we get here; a write failure is logged
+  // rather than raised, because losing an optional email is a smaller harm than
+  // locking a kid out of math over it.
+  const guardian = $('soloParentEmail').value.trim();
+  if (guardian) {
+    const { error: gErr } = await supabase
+      .from('student_guardians').upsert({ student_id: student.id, email: guardian });
+    if (gErr) console.error('[solo] could not save guardian email', gErr);
   }
   localStorage.removeItem(ROLE_KEY);
   state.isDeviceStudent = true;
