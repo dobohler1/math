@@ -156,37 +156,59 @@ canvas {
     <div class="centerWrap">
       <div class="card">
         <h1>Science on the Court — Math</h1>
-        <p class="sub">Enter your email and we'll send a magic link to sign in. No password needed.</p>
-        <div class="field">
-          <label for="authEmail">Parent email</label>
-          <input id="authEmail" type="email" placeholder="parent@email.com" autocomplete="email">
-        </div>
-        <button class="btn" id="authSendBtn">Send magic link</button>
-        <div class="statusMsg" id="authStatus"></div>
-        <div class="errMsg" id="authErr" style="display:none"></div>
 
-        <hr class="hr">
-        <div class="field">
-          <label for="classCodeInput">Student? Enter your class code</label>
-          <input id="classCodeInput" placeholder="e.g. SOTC-42" autocapitalize="characters" autocomplete="off">
+        <!-- STUDENTS: Google sign-in. Primary path — most users are students. -->
+        <div id="studentSignInBlock">
+          <p class="sub">Students — sign in with your Google account to start practicing.</p>
+          <button class="btn" id="googleSignInBtn">
+            <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true" style="vertical-align:-3px;margin-right:8px">
+              <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+              <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+              <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
+              <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+            </svg>Sign in with Google</button>
+          <div class="statusMsg" id="googleStatus"></div>
         </div>
-        <button class="btn secondary" id="joinClassBtn">Join class</button>
-        <div id="claimPanel" style="display:none; margin-top:14px;">
-          <p class="sub" id="claimHint">Tap your name:</p>
-          <div class="studentList" id="rosterList"></div>
-          <div id="pinBlock" style="display:none">
-            <div class="field">
-              <label id="pinLabel" for="pinInput">Enter your PIN</label>
-              <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4-digit PIN" autocomplete="off">
-            </div>
-            <div class="field" id="parentEmailField" style="display:none">
-              <label for="parentEmailInput">Parent or guardian's email (for progress updates)</label>
-              <input id="parentEmailInput" type="email" placeholder="parent@email.com" autocomplete="off">
-            </div>
-            <button class="btn" id="pinSubmitBtn">Let's go</button>
+
+        <!-- STUDENTS, step 2: signed in with Google but not yet on a roster. -->
+        <div id="claimBlock" style="display:none">
+          <p class="sub" id="claimWho">Signed in. Now join your class.</p>
+          <div class="field">
+            <label for="classCodeInput">Class code from your coach</label>
+            <input id="classCodeInput" placeholder="e.g. SOTC-42" autocapitalize="characters" autocomplete="off">
           </div>
+          <button class="btn" id="joinClassBtn">Find my class</button>
+          <div id="claimPanel" style="display:none; margin-top:14px;">
+            <p class="sub" id="claimHint">Tap your name:</p>
+            <div class="studentList" id="rosterList"></div>
+            <div id="pinBlock" style="display:none">
+              <div class="field" id="pinField" style="display:none">
+                <label id="pinLabel" for="pinInput">Enter your PIN</label>
+                <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4-digit PIN" autocomplete="off">
+              </div>
+              <div class="field" id="parentEmailField" style="display:none">
+                <label for="parentEmailInput">Parent or guardian's email (for progress updates)</label>
+                <input id="parentEmailInput" type="email" placeholder="parent@email.com" autocomplete="off">
+              </div>
+              <button class="btn" id="pinSubmitBtn">Let's go</button>
+            </div>
+          </div>
+          <button class="btn secondary" id="claimSignOutBtn" style="margin-top:12px">Not you? Sign out</button>
         </div>
         <div class="errMsg" id="claimErr" style="display:none"></div>
+
+        <!-- PARENTS / COACHES: magic link, unchanged. -->
+        <hr class="hr">
+        <details id="parentBlock">
+          <summary class="sub" style="cursor:pointer">Parent or coach? Sign in here</summary>
+          <div class="field" style="margin-top:10px">
+            <label for="authEmail">Parent email</label>
+            <input id="authEmail" type="email" placeholder="parent@email.com" autocomplete="email">
+          </div>
+          <button class="btn secondary" id="authSendBtn">Send magic link</button>
+          <div class="statusMsg" id="authStatus"></div>
+          <div class="errMsg" id="authErr" style="display:none"></div>
+        </details>
       </div>
     </div>
   </section>
@@ -343,6 +365,7 @@ $('authSendBtn').onclick = async () => {
     return;
   }
   $('authSendBtn').disabled = true;
+  localStorage.removeItem(ROLE_KEY); // this is the parent/coach path, not a student
   $('authStatus').textContent = 'Sending magic link…';
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -358,6 +381,33 @@ $('authSendBtn').onclick = async () => {
   $('authStatus').textContent = 'Check your email for a magic link, then return to this tab.';
 };
 
+// Students sign in with Google. On a SHARED iPad the previous student's Google
+// session is still in the browser, so `prompt: select_account` is mandatory —
+// without it Google silently re-uses the last account and student B lands in
+// student A's data. Redirect target is the clean page URL: passing
+// window.location.href round-trips any leftover ?code=/#access_token= fragment
+// back into the redirect and is a known source of "the link did nothing".
+const ROLE_KEY = 'sotc-signin-role';
+const CLEAN_URL = window.location.origin + window.location.pathname;
+// Declared here rather than beside the class-code flow below: resetAuthScreen()
+// clears it, and that can run from the very first auth event.
+const claim = { code: null, student: null };
+
+$('googleSignInBtn').onclick = async () => {
+  $('claimErr').style.display = 'none';
+  $('googleStatus').textContent = 'Opening Google…';
+  localStorage.setItem(ROLE_KEY, 'student');
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: CLEAN_URL, queryParams: { prompt: 'select_account' } },
+  });
+  if (error) {
+    localStorage.removeItem(ROLE_KEY);
+    $('googleStatus').textContent = '';
+    showClaimErr('Could not open Google sign-in: ' + error.message);
+  }
+};
+
 // Auth events fire repeatedly (INITIAL_SESSION, SIGNED_IN, hourly
 // TOKEN_REFRESHED, ...). Boot exactly once per signed-in user: a re-fired
 // event mid-drill must NOT re-run boot() (which would yank the student back
@@ -369,19 +419,71 @@ function handleAuthSession(session) {
   state.user = session?.user ?? null;
   if (!session) {
     bootedUserId = null;
+    resetAuthScreen();
     showScreen('authScreen');
     return;
   }
   if (bootedUserId === session.user.id) return; // already booted (token refresh, duplicate event)
   bootedUserId = session.user.id;
-  // Anonymous session = a student device (classroom onboarding). It either
-  // already has a student binding (go straight to drilling) or is mid-claim
-  // (leave the auth screen alone; the join-class flow drives it).
-  const entry = session.user.is_anonymous ? studentBoot() : boot();
-  entry.catch(err => {
+  routeSession(session).catch(err => {
     bootedUserId = null;
     showFatal('drillErr', 'Startup error: ' + err.message);
   });
+}
+
+// Which app is this session? Identity no longer implies role — a Google user
+// can be either a student or a parent — so ask the data, not the token:
+//   1. bound to a student  -> drill as that student (any device, any session)
+//   2. said "I'm a student" -> show the class-code claim step
+//   3. otherwise            -> parent/coach app
+// Order matters: the binding check must come FIRST, so a returning student is
+// never routed into boot(), which would create a spurious family for them.
+async function routeSession(session) {
+  const bound = await findStudentBinding();
+  if (bound) {
+    localStorage.removeItem(ROLE_KEY);
+    state.isDeviceStudent = true;
+    $('switchStudentBtn').style.display = 'none';
+    return selectStudent(bound);
+  }
+  if (localStorage.getItem(ROLE_KEY) === 'student' || session.user.is_anonymous) {
+    showClaimStep(session);
+    return;
+  }
+  return boot();
+}
+
+// Reveal the class-code step for a signed-in-but-unclaimed student.
+function showClaimStep(session) {
+  $('studentSignInBlock').style.display = 'none';
+  $('parentBlock').style.display = 'none';
+  $('claimBlock').style.display = 'block';
+  const who = session.user.email;
+  $('claimWho').textContent = who
+    ? `Signed in as ${who}. Now enter your class code.`
+    : 'Now enter your class code.';
+  showScreen('authScreen');
+}
+
+// Back to the pristine signed-out auth screen (also clears any roster left
+// on screen from a previous student on a shared iPad).
+function resetAuthScreen() {
+  localStorage.removeItem(ROLE_KEY);
+  $('studentSignInBlock').style.display = '';
+  $('parentBlock').style.display = '';
+  $('claimBlock').style.display = 'none';
+  $('claimPanel').style.display = 'none';
+  $('pinBlock').style.display = 'none';
+  $('pinField').style.display = 'none';
+  $('pinInput').value = '';
+  $('parentEmailField').style.display = 'none';
+  $('parentEmailInput').value = '';
+  $('claimErr').style.display = 'none';
+  $('googleStatus').textContent = '';
+  $('classCodeInput').value = '';
+  $('rosterList').innerHTML = '';
+  claim.code = null;
+  claim.student = null;
 }
 
 supabase.auth.onAuthStateChange((_event, session) => handleAuthSession(session));
@@ -536,7 +638,7 @@ $('newStudentBtn').onclick = async () => {
   renderStudentScreen();
 };
 
-$('signOutFromStudentScreen').onclick = () => supabase.auth.signOut();
+$('signOutFromStudentScreen').onclick = () => endSession();
 
 // Class code: lets students join via the class-code flow. Unambiguous
 // alphabet (no 0/O/1/I); regenerating invalidates the old code for future
@@ -555,7 +657,17 @@ $('genCodeBtn').onclick = async () => {
   state.family = data;
   renderStudentScreen();
 };
-$('signOutBtn').onclick = () => supabase.auth.signOut();
+// Shared-iPad hygiene: clear the role flag and the Supabase session so the
+// next student gets a clean auth screen. Google's own cookie survives (we
+// can't clear it cross-origin) — `prompt: select_account` on the next sign-in
+// is what stops it silently re-using this account.
+async function endSession() {
+  localStorage.removeItem(ROLE_KEY);
+  state.isDeviceStudent = false;
+  await supabase.auth.signOut();
+}
+$('signOutBtn').onclick = () => endSession();
+$('claimSignOutBtn').onclick = () => endSession();
 $('switchStudentBtn').onclick = () => renderStudentScreen();
 
 function escapeHtml(s) {
@@ -571,26 +683,24 @@ async function boot() {
   renderStudentScreen();
 }
 
-// Student-device boot: if this anonymous user is already bound to a student
-// (via join-class), skip everything and drill as them. Otherwise do nothing —
-// the auth screen's class-code flow takes over.
-async function studentBoot() {
-  const { data: link } = await supabase
+// Is this auth user already bound to a student (via join-class)?
+// MUST filter on auth_user_id explicitly: since 0007 a coach can also read
+// their whole class's bindings (student_devices_owner_read), so an unfiltered
+// maybeSingle() would throw "multiple rows returned" for any coach with two or
+// more claimed students. Returns the student, or null for a parent/unclaimed.
+async function findStudentBinding() {
+  const { data: link, error } = await supabase
     .from('student_devices')
     .select('student_id, students(id, display_name)')
+    .eq('auth_user_id', state.user.id)
     .maybeSingle();
-  if (link?.students) {
-    state.isDeviceStudent = true;
-    $('switchStudentBtn').style.display = 'none';
-    await selectStudent(link.students);
-  }
+  if (error) throw new Error('Could not check your class sign-in: ' + error.message);
+  return link?.students ?? null;
 }
 
 // ---------------------------------------------------------------------------
 // STUDENT CLASS-CODE FLOW (classroom onboarding)
 // ---------------------------------------------------------------------------
-const claim = { code: null, student: null };
-
 function showClaimErr(msg) {
   $('claimErr').textContent = msg;
   $('claimErr').style.display = 'block';
@@ -602,12 +712,9 @@ $('joinClassBtn').onclick = async () => {
   if (!code) { showClaimErr('Enter your class code.'); return; }
   $('joinClassBtn').disabled = true;
   try {
-    // A real (anonymous) session is needed so join-class sees a JWT.
-    if (!state.session) {
-      const { error } = await supabase.auth.signInAnonymously();
-      if (error) throw new Error('Could not start: ' + error.message +
-        (/(disabled|not enabled)/i.test(error.message) ? ' — anonymous sign-ins must be enabled in Supabase Auth settings.' : ''));
-    }
+    // join-class needs a JWT. Students reach this step already signed in with
+    // Google; a missing session here means they landed out of order.
+    if (!state.session) throw new Error('Sign in with Google first.');
     const { data, error } = await supabase.functions.invoke('join-class', { body: { class_code: code } });
     if (error || !data?.ok) throw new Error((data && data.error) || error?.message || 'Could not find that class.');
     claim.code = code;
@@ -631,14 +738,21 @@ function renderRoster(students) {
     btn.innerHTML = `<span>${escapeHtml(s.display_name)}</span><span class="grade">${s.has_pin ? '' : 'new'}</span>`;
     btn.onclick = () => {
       claim.student = s;
-      $('pinLabel').textContent = s.has_pin
-        ? `Enter ${s.display_name}'s PIN`
-        : `Create a PIN for ${s.display_name} (4 digits — remember it!)`;
+      // Google students need no PIN — the account is the proof of identity.
+      // Only legacy anonymous sessions still see the PIN field.
+      const needsPin = !!state.user?.is_anonymous;
+      $('pinField').style.display = needsPin ? 'block' : 'none';
+      if (needsPin) {
+        $('pinLabel').textContent = s.has_pin
+          ? `Enter ${s.display_name}'s PIN`
+          : `Create a PIN for ${s.display_name} (4 digits — remember it!)`;
+      }
       $('parentEmailField').style.display = s.needs_parent_email ? 'block' : 'none';
       $('parentEmailInput').value = '';
       $('pinBlock').style.display = 'block';
       $('pinInput').value = '';
-      $('pinInput').focus();
+      if (needsPin) $('pinInput').focus();
+      else if (s.needs_parent_email) $('parentEmailInput').focus();
     };
     wrap.appendChild(btn);
   });
@@ -647,10 +761,13 @@ function renderRoster(students) {
 
 $('pinSubmitBtn').onclick = async () => {
   $('claimErr').style.display = 'none';
-  const pin = $('pinInput').value.trim();
-  if (!/^[0-9]{4,8}$/.test(pin)) { showClaimErr('PIN must be 4-8 digits.'); return; }
   if (!claim.student) { showClaimErr('Pick your name first.'); return; }
-  const body = { class_code: claim.code, student_id: claim.student.id, pin };
+  const body = { class_code: claim.code, student_id: claim.student.id };
+  if ($('pinField').style.display !== 'none') {
+    const pin = $('pinInput').value.trim();
+    if (!/^[0-9]{4,8}$/.test(pin)) { showClaimErr('PIN must be 4-8 digits.'); return; }
+    body.pin = pin;
+  }
   if ($('parentEmailField').style.display !== 'none') {
     const pe = $('parentEmailInput').value.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(pe)) { showClaimErr("Enter your parent or guardian's email."); return; }
