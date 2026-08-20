@@ -158,6 +158,7 @@ canvas {
         <h1>Science on the Court — Math</h1>
 
         <!-- STUDENTS: Google sign-in. Primary path — most users are students. -->
+        <div class="errMsg" id="authFatal" style="display:none"></div>
         <div id="studentSignInBlock">
           <p class="sub">Students — sign in with your Google account to start practicing.</p>
           <button class="btn" id="googleSignInBtn">
@@ -427,7 +428,13 @@ function handleAuthSession(session) {
   bootedUserId = session.user.id;
   routeSession(session).catch(err => {
     bootedUserId = null;
-    showFatal('drillErr', 'Startup error: ' + err.message);
+    // Route the message to whichever screen the user is actually looking at.
+    // This used to always write to #drillErr, which lives on the drill screen —
+    // so a failure during sign-in left the auth card looking untouched and the
+    // user with no idea anything had gone wrong.
+    console.error('[auth] routeSession failed', err);
+    const onAuth = $('authScreen').classList.contains('show');
+    showFatal(onAuth ? 'authFatal' : 'drillErr', 'Startup error: ' + err.message);
   });
 }
 
@@ -468,7 +475,13 @@ function showClaimStep(session) {
 // Back to the pristine signed-out auth screen (also clears any roster left
 // on screen from a previous student on a shared iPad).
 function resetAuthScreen() {
-  localStorage.removeItem(ROLE_KEY);
+  // Deliberately does NOT clear ROLE_KEY. This runs on every null-session
+  // event, including the transient one supabase-js fires while it is still
+  // exchanging the ?code= from Google. Clearing the marker there destroyed the
+  // one piece of state that has to survive the redirect, and the student was
+  // then routed into the parent/coach app. The marker is cleared explicitly
+  // where it actually means something: endSession(), a successful binding, the
+  // parent magic-link path, and a failed signInWithOAuth call.
   $('studentSignInBlock').style.display = '';
   $('parentBlock').style.display = '';
   $('claimBlock').style.display = 'none';
